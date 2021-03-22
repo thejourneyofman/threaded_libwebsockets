@@ -7,5 +7,5 @@ A simple example of how to implement a threaded libwebsocket client that can sha
 #### Test Enviroment
 ##### msvc
 ##### c++17
-##### libwebsockets.lib (latest)
+##### websockets.lib (latest)
 ##### libssl.lib  (latest)
