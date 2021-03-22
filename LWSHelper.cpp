@@ -5,7 +5,9 @@
 // *  can share context from different threads so that it can reduce the memory
 // *  usage and keep running in a thread-safe way. It also solved a popular
 // *  issue how libwebsocket_callback_on_writable event can trigger callback
-// *  LWS_CALLBACK_SERVER_WRITEABLE when called from a different thread. 
+// *  LWS_CALLBACK_SERVER_WRITEABLE when called from a different thread as well
+// *  as an error handling mechanism to keep the connection up if other threads
+// *  throw an exception in their processing.
 // *
 // *  Author    : Chase (Chao) Xu
 // *  Copyright : 2021
@@ -42,10 +44,10 @@ public:
 	}
 
 	// callback function
-	static int eventCallback(struct lws* wsi, 
-		enum lws_callback_reasons reason, 
-		void* user, 
-		void* in, 
+	static int eventCallback(struct lws* wsi,
+		enum lws_callback_reasons reason,
+		void* user,
+		void* in,
 		size_t len) {
 
 		const char msg[MAX_BUFF_SIZE] = "{ \"echo\": \"auth\" }";
@@ -96,7 +98,7 @@ public:
 		clientConnectInfo.context = context;
 		clientConnectInfo.address = "echo.websocket.org";
 		clientConnectInfo.port = 80;
-		clientConnectInfo.path = "/"; 
+		clientConnectInfo.path = "/";
 		clientConnectInfo.host = clientConnectInfo.address;
 		clientConnectInfo.origin = NULL;
 		clientConnectInfo.ietf_version_or_minus_one = -1;
@@ -135,7 +137,7 @@ public:
 		   0,
 		   MAX_BUFF_SIZE,
 	   },
-	   { NULL, NULL, 0 } 
+	   { NULL, NULL, 0 }
 	};
 
 	// initialize the context for ONLY once
@@ -167,19 +169,9 @@ public:
 	}
 
 	// terminate
-	void terminate(const int& sid)
+	void terminate()
 	{
-		try {
-			lws_context_destroy(context_);
-			printf("Thread %d is terminated\n", sid);
-		}
-		catch (std::runtime_error& e)
-		{
-			printf("Thread %d has a runtime error %s\n", sid, e.what());			
-		}
-		catch (...) {
-			// do nothing
-		}
+		lws_context_destroy(context_);
 	}
 
 private:
@@ -210,32 +202,60 @@ void thread01()
 	while (1) {
 		libWSHelper::getInstance()->run(1);
 	}
-	libWSHelper::getInstance()->terminate(1);
-	
+
 }
 
+// simulate an Exception in Thread 02
 void thread02()
 {
 	struct lws_context* ctx = libWSHelper::getInstance()->getContext();
 	lws_system_get_ops(ctx)->attach(ctx, 0, libWSHelper::getInstance()->attachToEventCallback,
 		LWS_SYSTATE_OPERATIONAL,
 		NULL, NULL);
+	int i = 0;
+	int min = 2;
+	int max = 21;
+	int triggerNum = (rand() % (max - min)) + min;
+
 	while (1) {
+		i++;
 		libWSHelper::getInstance()->run(2);
+		try {
+			if (i == triggerNum)
+				throw - 9999;
+		}
+		catch (...)
+		{
+			printf("Thread 2 exited unexpectly with trigger number %d.\n", triggerNum);
+			break;
+		}
 	}
-	libWSHelper::getInstance()->terminate(2);
 }
 
+// simulate an Exception in Thread 03
 void thread03()
 {
 	struct lws_context* ctx = libWSHelper::getInstance()->getContext();
 	lws_system_get_ops(ctx)->attach(ctx, 0, libWSHelper::getInstance()->attachToEventCallback,
 		LWS_SYSTATE_OPERATIONAL,
 		NULL, NULL);
+	int i = 0;
+	int min = 22;
+	int max = 41;
+	int triggerNum = (rand() % (max - min)) + min;
 	while (1) {
+		i++;
 		libWSHelper::getInstance()->run(3);
+		try {
+			if (i == triggerNum)
+				throw - 9999;
+		}
+		catch (...)
+		{
+			printf("Thread 3 exited unexpectly with trigger number %d.\n", triggerNum);
+			break;
+		}
 	}
-	libWSHelper::getInstance()->terminate(3);
 }
 
 
@@ -255,7 +275,7 @@ int main()
 	thread2.join();
 	thread3.join();
 	//terminate
-	libWSHelper::getInstance()->terminate(0);
+	libWSHelper::getInstance()->terminate();
 
 	return 0;
 }
